@@ -1,0 +1,105 @@
+#!/bin/sh
+
+version="20.4.24"   # Change date
+tool_name=$(basename $0)
+tool_dir=$(dirname $0)
+jserver_home=${JSERVER_HOME:-"/opt/mdis/jserver"}
+perf_home=${PERF_HOME:-"/tmp/perf"}
+log_dir=${perf_home}/log
+log_file=${log_dir}/${tool_name}.$(date +"%y%m%d")
+ret_file=${log_dir}/${tool_name}.ok
+input_command="$0 $@"
+
+. ${jserver_home}/tool/lib/jserverutil.sh || exit 1
+
+wsadmin() {
+    ${verbose:+set -x}
+    local mode=${1:?param error}
+    local opt1=${2}
+    local opt2=${3}
+    (
+        ce cd ${tool_dir}
+        ce /opt/IBM/WebSphere/AppServer/bin/wsadmin.sh -lang jython -userName jserver -password \
+           jserver -f ./setupJsaPerformance.py ${mode} ${opt1} ${opt2}
+        exit $?
+    )
+    return $?
+}
+
+write_header() {
+    ${verbose:+set -x}
+    local prompt="$"
+    local whoami=$(whoami)
+    test "$whoami" = "root" && prompt="#"
+    echo
+    echo "####################" $(date) "####################"
+    echo "$whoami"
+    echo "$prompt $input_command"
+    echo "(script version=$version)"
+    echo
+    return 0
+}
+prepare_log() {
+    ${verbose:+set -x}
+    local logd=$(dirname $log_file)
+    ls -d "$logd" >/dev/null 2>&1 || {
+        ce mkdir -p $logd || return 1
+    }
+    write_header >>$log_file || return 1
+    test -w $log_file || {
+        chmod a+w $log_file || return 1
+    }
+    return 0
+}
+usage() {
+    echo "Version: ${version}"
+    echo
+    echo "# ${tool_name} [-l FILE_PATH] [-vnh] FUNC"
+    echo
+    echo "  -l: set log file (default: ${log_dir}/${tool_name}.yymmdd)"
+    echo "  -v: show verbose"
+    echo "  -n: dry-run mode"
+    echo "  -h: show this help message"
+    echo
+    echo "  FUNC : set function -- pt | itb"
+    echo
+}
+
+while getopts l:vnh OPT; do
+    case $OPT in
+        l)  log_file=$OPTARG ;;
+        v)  verbose=yes ;;
+        n)  dryrun=echo ;;
+        h)  usage ; exit 0 ;;
+        *)  usage ; exit 1 ;;
+    esac
+done
+shift $(expr $OPTIND - 1)
+${verbose:+set -x}
+func=${1:?param error}
+shift 1
+
+prepare_log || error_exit
+case $func in
+    pt | itb | xcygnus | xpollux | show) ;;
+    *)  error_exit "Incorrect function" ;;
+esac
+
+rm -f ${ret_file}
+{
+    wsadmin "${func}" ${verbose:+"debug"} ${dryrun:+"dryrun"} 2>&1
+    ret=$?
+    test ${ret} -ne 0 && {
+        error_exit "Failed wsadmin (${ret})"
+    }
+    echo "do_${func} done..."
+    touch ${ret_file}
+} 2>&1 | tee -a ${log_file}
+
+echo "log file is ${log_file}"
+test -e ${ret_file} || error_exit "${func} Failed"
+rm -fr ${ret_file}
+
+exit 0
+
+# vim: set ts=4 sw=4 et:
