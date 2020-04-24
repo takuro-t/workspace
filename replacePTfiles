@@ -1,0 +1,209 @@
+#!/bin/sh
+
+version="20.4.24"   # Change date
+tool_name=$(basename $0)
+tool_dir=$(dirname $0)
+perf_home=${PERF_HOME:-"/tmp/perf"}
+log_dir=${perf_home}/log
+log_file=${log_dir}/${tool_name}.$(date +"%y%m%d")
+ret_file=${log_dir}/${tool_name}.ok
+jserver_home=${JSERVER_HOME:-"/opt/mdis/jserver"}
+app_dir=${jserver_home}/conf
+conf_dir=${jserver_home}/conf
+tmp_dir=${jserver_home}/tmp
+file_list="BeanSettings.xml environment.properties log4j2.xml"
+input_command="$0 $@"
+
+. ${jserver_home}/tool/lib/jserverutil.sh || exit 1
+
+logger() {
+    ${verbose:+set -x}
+    local level=${1:?param error:level}
+    shift 1
+    local date="$(date +"%Y/%m/%d %H:%M:%S")"
+    printf "%s %-7s %s\n" "${date}" "${level}" "$@"
+}
+error() {
+    ${verbose:+set -x}
+    logger "ERROR" "$@"
+}
+warning() {
+    ${verbose:+set -x}
+    logger "WARNING" "$@"
+}
+info() {
+    ${verbose:+set -x}
+    logger "INFO" "$@"
+}
+error_exit() {
+    ${verbose:+set -x}
+    local msg="$@"
+    test -n "${msg}" && error "${msg}"
+    exit 1
+}
+
+check_ptmode() {
+    ${verbose:+set -x}
+    local is_pt=0
+    for f in ${file_list} ; do
+        diff ${conf_dir}/${f} ${conf_dir}/${f}.pt > /dev/null && {
+            info "${f} is for PT"
+            continue
+        }
+        info "${f} is for ITb"
+        is_pt=1
+    done
+    return ${is_pt}
+}
+is_ptmode() {
+    ${verbose:+set -x}
+    check_ptmode > /dev/null 2>&1
+    return $?
+}
+
+check_state() {
+    ${verbose:+set -x}
+    info "Check configuration files"
+    check_ptmode
+    ce "ls -l ${conf_dir}"
+
+    info "Check symbolic link of jserverapp"
+    ce "ls -la ${jserver_home}/app/jserverapp/latest"
+    return 0
+}
+
+replace_conf() {
+    ${verbose:+set -x}
+    info "Replace configuration file to ${mode}"
+    case ${mode} in
+        pt)
+            for f in ${file_list} ; do
+                info "Replace ${f} to ${kind}"
+                test -e ${conf_dir}/${f}.pt || {
+                    warning "{f}.pt is not found."
+                    continue
+                }
+                ce "cp -p ${conf_dir}/${f} ${conf_dir}/${f}.back"
+                ce "cp -p ${conf_dir}/${f}.pt ${conf_dir}/${f}"
+            done
+            ;;
+        itb)
+            for f in ${file_list} ; do
+                info "Replace ${f} to ${kind}"
+                test -e ${conf_dir}/${f}.back || {
+                    warning "{f}.back is not found."
+                    continue
+                }
+                ce "cp -p ${conf_dir}/${f}.back ${conf_dir}/${f}"
+            done
+            ;;
+    esac
+    return 0
+}
+
+replace_app() {
+    ${verbose:+set -x}
+
+    return 1
+}
+
+
+validate_parameters() {
+    ${verbose:+set -x}
+    case $mode in
+        pt | itb | check) ;;
+        *)  error_exit "Incorrect mode" ;;
+    esac
+
+    case $kind in
+        conf | app) ;;
+        *)  error_exit "Incorrect kind" ;;
+    esac
+    return 0
+}
+write_header() {
+    ${verbose:+set -x}
+    local prompt="$"
+    local whoami=$(whoami)
+    test "$whoami" = "root" && prompt="#"
+    echo
+    echo "####################" $(date) "####################"
+    echo "$whoami"
+    echo "$prompt $input_command"
+    echo "(script version=$version)"
+    echo
+    return 0
+}
+prepare_log() {
+    ${verbose:+set -x}
+    local logd=$(dirname $log_file)
+    ls -d "$logd" >/dev/null 2>&1 || {
+         mkdir -p $logd || return 1
+    }
+    write_header >>$log_file || return 1
+    test -w $log_file || {
+        chmod a+w $log_file || return 1
+    }
+    return 0
+}
+usage() {
+    cat 1>&2 <<_
+Version: ${tool_version}
+
+usage: ${tool_name} FUNC [KIND]
+
+    -l: Log file name (Default: ${log_file})
+    -n: Dryrun
+    -v: Verbose
+
+    FUNC:   pt | itb
+    KIND:   conf | app (Default: conf)
+
+_
+}
+
+while getopts l:vnh OPT; do
+    case $OPT in
+        l)  log_file=$OPTARG ;;
+        v)  verbose=yes ;;
+        n)  dryrun=echo ;;
+        h)  usage ; exit 0 ;;
+        *)  usage ; exit 1 ;;
+    esac
+done
+shift $(expr $OPTIND - 1)
+${verbose:+set -x}
+mode=${1:?param error}
+kind=${2:-"conf"}
+
+validate_parameters
+prepare_log || error_exit
+
+test "${mode}" = "check" && {
+    check_state
+    exit 0
+}
+
+if [ "$(whoami)" != "root" ]; then
+    sudo sh -c "${input_command}"
+    exit $?
+fi
+
+rm -f ${ret_file}
+{
+    replace_${kind}
+    ret=$?
+    test ${ret} -ne 0 && {
+        error_exit "Failed replace_${mode} (${ret})"
+    }
+    touch ${ret_file}
+    info "Complted function: ${mode} ${kind}"
+} 2>&1 | tee -a ${log_file}
+
+info "log file is ${log_file}"
+test -e ${ret_file} || error_exit
+rm -fr ${ret_file}
+
+exit 0
+
+# vim: set ts=4 sw=4 et:
