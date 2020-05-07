@@ -32,10 +32,10 @@ class StrapiDocControl(object):
         self.doc_name = args.doc_name
         self.pub_name = args.pub_name or args.doc_name
         self.switch_dsp = args.switch_dsp
-        self.strapi_base = args.host or 'xspinach.kuukou.biz:10081'
+        self.strapi_base = args.host or 'xlibra2.kuukou.biz:11081'
         self.strapi = 'http://{}/doc-{}s'.format(self.strapi_base, args.kind)
-        self.public_ed_url = 'http://xspinach.kuukou.biz/pub/specification'
-        self.public_id_url = 'http://xspinach.kuukou.biz/gitbook/J-Server'
+        self.public_ed_url = 'http://xlibra2.kuukou.biz:8080/specification'
+        self.public_id_url = 'http://xlibra2.kuukou.biz:8080/gitbook/JSA'
         self.contents = self.get_contents()
 
     def error(self, msg):
@@ -151,7 +151,7 @@ class StrapiDocControl(object):
             return
 
         self.info('Register content to {}'.format(self.version))
-        item = {'ed_edition':self.version, 'ed_index_url':'{}/{}'.format(self.public_ed_url, self.version),
+        item = {'ed_edition':self.version, 'ed_index_url':'{}/{}/'.format(self.public_ed_url, self.version),
                 'switch_display':self.switch_dsp}
         self.debug('item: %s' % item)
         self.info('Register content: {}'.format(self.version))
@@ -165,7 +165,7 @@ class StrapiDocControl(object):
         self.info('Update ID content:{}, {}'.format(self.version, self.pub_name))
         if not self.is_exists(mode='version'):
             self.info('Register content to {}'.format(self.version))
-            l = [{'doc_name':self.pub_name, 'doc_url':'{}/{}/{}'.format(self.public_id_url, self.version, self.doc_name)}]
+            l = [{'doc_name':self.pub_name, 'doc_url':'{}/{}/{}/'.format(self.public_id_url, self.version, self.doc_name)}]
             item = {'id_edition':self.version, 'id_list':l, 'switch_display':self.switch_dsp}
             self.debug('item: %s' % item)
             self.info('Register content: {}'.format(self.pub_name))
@@ -177,7 +177,7 @@ class StrapiDocControl(object):
         if not _dict:
             raise MyException('{} is not found'.format(self.version))
 
-        url = '{}/{}/{}'.format(self.public_id_url, self.version, self.doc_name)
+        url = '{}/{}/{}/'.format(self.public_id_url, self.version, self.doc_name)
         _dict['switch_display'] = self.switch_dsp
         if not self.is_exists():
             l = {'doc_name':self.pub_name, 'doc_url':url}
