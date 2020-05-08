@@ -9,7 +9,7 @@ import trace
 import traceback
 import requests
 
-tool_version = '20.4.17'     # change date
+tool_version = '20.5.8'     # change date
 
 logger = getLogger(__name__)
 handler = StreamHandler()
@@ -158,6 +158,17 @@ class StrapiDocControl(object):
         self._request2register(item)
         return
 
+    def _sorted_content_id(self, _lists):
+        keys = list(map(lambda l:l['doc_name'], _lists))
+        self.debug('Doc name list: %s' % keys)
+        _list = []
+        for key in sorted(keys):
+            for d in _lists:
+                if d['doc_name'] != key: continue
+                _list.append(d)
+                break
+        return _list
+
     def update_content_id(self):
         if not self.doc_name:
             raise MyException('Incorrect parameter: DOC_NAME')
@@ -182,6 +193,7 @@ class StrapiDocControl(object):
         if not self.is_exists():
             l = {'doc_name':self.pub_name, 'doc_url':url}
             _dict['id_list'].append(l)
+            _dict['id_list'] = self._sorted_content_id(_dict['id_list'])
             self.info('Register content: {}'.format(self.pub_name))
             self.debug('dict: %s' % _dict)
             self._request2modify(_dict, _dict['id'])
@@ -191,6 +203,7 @@ class StrapiDocControl(object):
             if d['doc_name'] != self.pub_name: continue
             d['doc_url'] = url
             break
+        _dict['id_list'] = self._sorted_content_id(_dict['id_list'])
         self.info('Modify content: {}'.format(self.pub_name))
         self.debug('dict: %s' % _dict)
         self._request2modify(_dict, _dict['id'])
