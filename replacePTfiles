@@ -1,14 +1,13 @@
 #!/bin/sh
 
-version="20.4.24"   # Change date
+tool_version="20.5.8"   # Change date
 tool_name=$(basename $0)
-tool_dir=$(dirname $0)
 perf_home=${PERF_HOME:-"/tmp/perf"}
 log_dir=${perf_home}/log
 log_file=${log_dir}/${tool_name}.$(date +"%y%m%d")
 ret_file=${log_dir}/${tool_name}.ok
 jserver_home=${JSERVER_HOME:-"/opt/mdis/jserver"}
-app_dir=${jserver_home}/conf
+app_dir=${jserver_home}/app/jserverapp
 conf_dir=${jserver_home}/conf
 tmp_dir=${jserver_home}/tmp
 file_list="BeanSettings.xml environment.properties log4j2.xml"
@@ -46,21 +45,23 @@ check_ptmode() {
     ${verbose:+set -x}
     local is_pt=0
     for f in ${file_list} ; do
-        diff ${conf_dir}/${f} ${conf_dir}/${f}.pt > /dev/null && {
-            info "${f} is for PT"
+        test -e ${conf_dir}/pt/${f} || {
+            info "${f} is for ITb"
+            continue
+        }
+        test -e ${conf_dir}/${f}.back || {
+            info "${f} is for ITb"
+            continue
+        }
+        diff ${conf_dir}/${f} ${conf_dir}/pt/${f} > /dev/null && {
+            info "${f} is the same as the file in PT."
+            is_pt=1
             continue
         }
         info "${f} is for ITb"
-        is_pt=1
     done
     return ${is_pt}
 }
-is_ptmode() {
-    ${verbose:+set -x}
-    check_ptmode > /dev/null 2>&1
-    return $?
-}
-
 check_state() {
     ${verbose:+set -x}
     info "Check configuration files"
@@ -79,32 +80,46 @@ replace_conf() {
         pt)
             for f in ${file_list} ; do
                 info "Replace ${f} to ${kind}"
-                test -e ${conf_dir}/${f}.pt || {
-                    warning "{f}.pt is not found."
+                test -e ${conf_dir}/pt/${f} || {
+                    warning "${f} at pt is not found."
+                    continue
+                }
+                diff ${conf_dir}/pt/${f} ${conf_dir}/${f} > /dev/null && {
+                    warning "${f} is the same as PT configuration file."
                     continue
                 }
                 ce "cp -p ${conf_dir}/${f} ${conf_dir}/${f}.back"
-                ce "cp -p ${conf_dir}/${f}.pt ${conf_dir}/${f}"
+                ce "cp -p ${conf_dir}/pt/${f} ${conf_dir}/${f}"
             done
             ;;
         itb)
             for f in ${file_list} ; do
                 info "Replace ${f} to ${kind}"
                 test -e ${conf_dir}/${f}.back || {
-                    warning "{f}.back is not found."
+                    warning "${f}.back is not found."
                     continue
                 }
                 ce "cp -p ${conf_dir}/${f}.back ${conf_dir}/${f}"
+                diff ${conf_dir}/${f} ${conf_dir}/${f}.back > /dev/null && {
+                    ce "mv ${conf_dir}/${f}.back /tmp/garbage/."
+                }
             done
             ;;
     esac
+    ce "ls -l ${conf_dir}"
     return 0
 }
 
 replace_app() {
     ${verbose:+set -x}
-
-    return 1
+    info "Replace symbolic link of jserverapp to ${mode}"
+    case ${mode} in
+        pt)
+            ;;
+        itb)
+            ;;
+    esac
+    return 0
 }
 
 
@@ -130,7 +145,7 @@ write_header() {
     echo "####################" $(date) "####################"
     echo "$whoami"
     echo "$prompt $input_command"
-    echo "(script version=$version)"
+    echo "(script version=$tool_version)"
     echo
     return 0
 }
