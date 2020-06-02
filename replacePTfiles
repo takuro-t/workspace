@@ -1,15 +1,16 @@
 #!/bin/sh
 
-tool_version="20.5.8"   # Change date
+tool_version="20.6.2"   # Change date
 tool_name=$(basename $0)
 perf_home=${PERF_HOME:-"/tmp/perf"}
 log_dir=${perf_home}/log
 log_file=${log_dir}/${tool_name}.$(date +"%y%m%d")
 ret_file=${log_dir}/${tool_name}.ok
 jserver_home=${JSERVER_HOME:-"/opt/mdis/jserver"}
-app_dir=${jserver_home}/app/jserverapp
 conf_dir=${jserver_home}/conf
 tmp_dir=${jserver_home}/tmp
+latest="${jserver_home}/app/jserverapp/latest"
+pt_mdir="${jserver_home}/deploy/pt"
 file_list="BeanSettings.xml environment.properties log4j2.xml"
 input_command="$0 $@"
 
@@ -72,7 +73,6 @@ check_state() {
     ce "ls -la ${jserver_home}/app/jserverapp/latest"
     return 0
 }
-
 replace_conf() {
     ${verbose:+set -x}
     info "Replace configuration file to ${mode}"
@@ -109,16 +109,36 @@ replace_conf() {
     ce "ls -l ${conf_dir}"
     return 0
 }
-
 replace_app() {
     ${verbose:+set -x}
     info "Replace symbolic link of jserverapp to ${mode}"
     case ${mode} in
         pt)
+            test -e ${pt_mdir} || {
+                warning "PT module is not found"
+                return 0
+            }
+            cmp -s ${latest}/*.ear ${pt_mdir}/*.ear && {
+                info "the module is same as pt module"
+                return 0
+            }
+            ce "mv ${latest} ${latest}.back"
+            ce "ln -s ${pt_mdir} ${latest}"
             ;;
         itb)
+            test -e ${latest}.back || {
+                warning "Backup module is not found. So skip replace"
+                return 0
+            }
+            cmp -s ${latest}/*.ear ${latest}.back/*.ear && {
+                info "the module is same as backup module"
+                return 0
+            }
+            ce "rm ${latest}"
+            ce "mv ${latest}.back ${latest}"
             ;;
     esac
+    ce "ls -la ${jserver_home}/app/jserverapp/latest"
     return 0
 }
 
@@ -165,18 +185,17 @@ usage() {
     cat 1>&2 <<_
 Version: ${tool_version}
 
-usage: ${tool_name} FUNC [KIND]
+usage: ${tool_name} MODE [KIND]
 
     -l: Log file name (Default: ${log_file})
     -n: Dryrun
     -v: Verbose
 
-    FUNC:   pt | itb
+    MODE:   pt | itb | check
     KIND:   conf | app (Default: conf)
 
 _
 }
-
 while getopts l:vnh OPT; do
     case $OPT in
         l)  log_file=$OPTARG ;;
@@ -212,7 +231,7 @@ rm -f ${ret_file}
         error_exit "Failed replace_${mode} (${ret})"
     }
     touch ${ret_file}
-    info "Complted function: ${mode} ${kind}"
+    info "Completed function: ${mode} ${kind}"
 } 2>&1 | tee -a ${log_file}
 
 info "log file is ${log_file}"
